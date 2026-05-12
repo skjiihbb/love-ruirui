@@ -81,17 +81,31 @@ html, body {
   50% { transform: scale(1.035); }
 }
 
-.heart-text {
+.heart-text-wrap {
   position: absolute;
-  white-space: nowrap;
-  color: #c9606a;
-  font-size: clamp(14px, 3.6vw, 20px);
-  text-shadow: 0 1px 6px rgba(201,96,106,0.3);
   pointer-events: auto;
 }
-.heart-text:nth-child(odd) { color: #d4787c; }
-.heart-text:nth-child(even) { color: #c9606a; }
-.heart-text:nth-child(3n) { color: #e08882; }
+.heart-text {
+  display: inline-block;
+  white-space: nowrap;
+  color: #c9606a;
+  font-size: clamp(13px, 3.2vw, 18px);
+  background: rgba(255,255,255,0.9);
+  border: 2px solid #f0a0a8;
+  border-radius: 20px;
+  padding: 5px 13px;
+  box-shadow: 0 2px 10px rgba(200,100,120,0.15);
+  opacity: 0;
+  transform: scale(0);
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: auto;
+}
+.heart-text.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+.heart-text:nth-child(2n) { color: #d4787c; border-color: #e8a0a8; }
+.heart-text:nth-child(3n) { color: #e08882; border-color: #d8a0b0; }
 
 .heart-center {
   position: absolute; top: 50%; left: 50%;
@@ -331,6 +345,8 @@ html, body {
       playing = true;
       btn.classList.add('playing');
       label.textContent = '♪ 播放中';
+      // 开始逐个显示爱心文字
+      if (window.startHeartReveal) window.startHeartReveal();
       var ripple = document.createElement('div');
       ripple.className = 'note-ripple';
       btn.appendChild(ripple);
@@ -358,12 +374,28 @@ html, body {
   document.addEventListener('click', function(e) {
     if (!autoPlayed && e.target !== btn && !btn.contains(e.target)) { autoPlay(); }
   }, { once: true });
+
+  // 音乐循环时重新开始文字动画
+  var lastTime = 0;
+  audio.addEventListener('timeupdate', function() {
+    if (playing && audio.currentTime < lastTime && window.startHeartReveal) {
+      window.startHeartReveal();
+    }
+    lastTime = audio.currentTime;
+  });
 })();
 
 // 爱心文字
 (function() {
-  var texts = ['乖乖吃饭','天天开心','好好睡觉','注意防晒','别太累了','记得想我','要照顾好自己','每天都要笑','多喝水水','你最可爱','摸摸头','抱抱你'];
+  var texts = [
+    '乖乖吃饭', '天天开心', '好好睡觉', '注意防晒',
+    '别太累了', '记得想我', '要照顾好自己', '每天都要笑',
+    '多喝水水', '你最可爱', '摸摸头', '抱抱你',
+    '爱你哟', '你最好看了', '永远幸福', '你是小太阳',
+    '今天超棒', '开开心心'
+  ];
   var wrapper = document.getElementById('heartWrapper');
+  var allWraps = [];
 
   function heartX(t) { return 16 * Math.pow(Math.sin(t), 3); }
   function heartY(t) {
@@ -371,10 +403,11 @@ html, body {
   }
 
   function placeTexts() {
-    wrapper.querySelectorAll('.heart-text').forEach(function(el) { el.remove(); });
+    wrapper.querySelectorAll('.heart-text-wrap').forEach(function(el) { el.remove(); });
+    allWraps = [];
     var vw = window.innerWidth;
     var vh = window.innerHeight;
-    var scale = Math.min(vw, vh) * 0.022;
+    var scale = Math.min(vw, vh) * 0.021;
     var cx = vw / 2;
     var cy = vh * 0.45;
 
@@ -383,8 +416,8 @@ html, body {
 
     for (var i = 0; i < texts.length; i++) {
       var t = (i / texts.length) * Math.PI * 2;
-      if (t < 0.35) t = 0.35 + (0.35-t)*0.5;
-      if (t > Math.PI*2 - 0.35) t = Math.PI*2 - 0.35 - (t-(Math.PI*2-0.35))*0.5;
+      if (t < 0.3) t = 0.3 + (0.3-t)*0.5;
+      if (t > Math.PI*2 - 0.3) t = Math.PI*2 - 0.3 - (t-(Math.PI*2-0.3))*0.5;
 
       var x = heartX(t) * scale;
       var y = heartY(t) * scale;
@@ -394,17 +427,62 @@ html, body {
       var angle = Math.atan2(dy, dx) * 180 / Math.PI;
       if (y > scale * 5 && Math.abs(angle) > 90) angle += 180;
 
+      var wrap = document.createElement('span');
+      wrap.className = 'heart-text-wrap';
+      wrap.style.cssText = 'left:'+(cx+x)+'px;top:'+(cy+y)+'px;transform:translate(-50%,-50%) rotate('+angle+'deg)';
+
       var span = document.createElement('span');
       span.className = 'heart-text';
       span.textContent = texts[i];
-      span.style.cssText = 'position:absolute;left:'+(cx+x)+'px;top:'+(cy+y)+'px;transform:translate(-50%,-50%) rotate('+angle+'deg)';
-      wrapper.appendChild(span);
+
+      wrap.appendChild(span);
+      wrapper.appendChild(wrap);
+      allWraps.push(wrap);
     }
   }
 
+  // 逐个显示文字
+  var currentIdx = 0;
+  var revealTimer = null;
+
+  window.revealNextText = function() {
+    if (currentIdx < allWraps.length) {
+      var wrap = allWraps[currentIdx];
+      var span = wrap.querySelector('.heart-text');
+      if (span) span.classList.add('visible');
+      currentIdx++;
+    }
+  };
+
+  window.resetHeartTexts = function() {
+    if (revealTimer) clearInterval(revealTimer);
+    currentIdx = 0;
+    allWraps.forEach(function(wrap) {
+      var span = wrap.querySelector('.heart-text');
+      if (span) span.classList.remove('visible');
+    });
+  };
+
+  window.startHeartReveal = function() {
+    resetHeartTexts();
+    revealNextText();
+    revealTimer = setInterval(function() {
+      if (currentIdx >= allWraps.length) {
+        clearInterval(revealTimer);
+        revealTimer = null;
+        return;
+      }
+      revealNextText();
+    }, 2800);
+  };
+
+  window.isHeartRevealing = function() {
+    return revealTimer !== null && currentIdx < allWraps.length;
+  };
+
   placeTexts();
-  var timer;
-  window.addEventListener('resize', function() { clearTimeout(timer); timer = setTimeout(placeTexts, 200); });
+  var resizeTimer;
+  window.addEventListener('resize', function() { clearTimeout(resizeTimer); resizeTimer = setTimeout(placeTexts, 200); });
   setTimeout(placeTexts, 500);
   setTimeout(placeTexts, 1500);
 })();
